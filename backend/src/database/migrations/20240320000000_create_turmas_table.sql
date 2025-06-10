@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS turmas (
+    id SERIAL PRIMARY KEY,
+    nome VARCHAR(100) NOT NULL,
+    dia_semana VARCHAR(20) NOT NULL,
+    horario_inicio TIME NOT NULL,
+    horario_termino TIME NOT NULL,
+    status BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+); 
