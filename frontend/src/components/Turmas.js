@@ -221,6 +221,9 @@ function Turmas() {
     if (turma) {
       setCurrentTurma({
         ...turma,
+        disciplina_id: Number(turma.disciplina_id),
+        professor_id: Number(turma.professor_id),
+        sala_id: Number(turma.sala_id),
         status: turma.status // Preserva o status original
       });
     } else {
@@ -278,6 +281,7 @@ function Turmas() {
 
   const handleSave = async () => {
     try {
+      console.log('Dados da turma a serem salvos:', currentTurma);
       if (currentTurma.id) {
         await axios.put(`${API_URL}/turmas/${currentTurma.id}`, currentTurma);
         showSnackbar('Turma atualizada com sucesso!');
@@ -289,6 +293,7 @@ function Turmas() {
       carregarTurmas();
     } catch (error) {
       console.error('Erro ao salvar turma:', error);
+      console.error('Detalhes do erro:', error.response?.data);
       showSnackbar(
         error.response?.data?.erro || 'Erro ao salvar turma',
         'error'

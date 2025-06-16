@@ -130,23 +130,37 @@ const listarTurmas = async (req, res) => {
         const offset = (pagina - 1) * limite;
 
         // Validação dos campos de ordenação
-        const camposPermitidos = ['nome', 'ano', 'semestre'];
+        const camposPermitidos = ['nome', 'disciplina_nome', 'professor_nome', 'sala_nome'];
         const direcoesPermitidas = ['asc', 'desc'];
         
         const campoOrdenacao = camposPermitidos.includes(orderBy) ? orderBy : 'nome';
         const direcaoOrdenacao = direcoesPermitidas.includes(orderDirection.toLowerCase()) ? orderDirection : 'asc';
 
         let query = `
-            SELECT * FROM turmas 
-            WHERE status = $1
+            SELECT t.*, 
+                   d.nome as disciplina_nome,
+                   p.nome as professor_nome,
+                   s.nome as sala_nome,
+                   s.capacidade as sala_capacidade,
+                   COALESCE((
+                       SELECT COUNT(*) 
+                       FROM turma_alunos ta 
+                       WHERE ta.turma_id = t.id
+                   ), 0) as alunos_count
+            FROM turmas t
+            LEFT JOIN disciplinas d ON t.disciplina_id = d.id
+            LEFT JOIN professores p ON t.professor_id = p.id
+            LEFT JOIN salas s ON t.sala_id = s.id
+            WHERE t.status = $1
         `;
         const params = [status];
 
         if (busca) {
             query += ` AND (
-                nome ILIKE $2 OR 
-                CAST(ano AS TEXT) ILIKE $2 OR 
-                CAST(semestre AS TEXT) ILIKE $2
+                t.nome ILIKE $2 OR 
+                d.nome ILIKE $2 OR 
+                p.nome ILIKE $2 OR 
+                s.nome ILIKE $2
             )`;
             params.push(`%${busca}%`);
         }
@@ -162,12 +176,18 @@ const listarTurmas = async (req, res) => {
         
         // Conta total de registros para paginação
         const countQuery = `
-            SELECT COUNT(*) FROM turmas 
-            WHERE status = $1
+            SELECT COUNT(DISTINCT t.id) 
+            FROM turmas t
+            LEFT JOIN disciplinas d ON t.disciplina_id = d.id
+            LEFT JOIN professores p ON t.professor_id = p.id
+            LEFT JOIN salas s ON t.sala_id = s.id
+            LEFT JOIN turma_alunos ta ON t.id = ta.turma_id
+            WHERE t.status = $1
             ${busca ? `AND (
-                nome ILIKE $2 OR 
-                CAST(ano AS TEXT) ILIKE $2 OR 
-                CAST(semestre AS TEXT) ILIKE $2
+                t.nome ILIKE $2 OR 
+                d.nome ILIKE $2 OR 
+                p.nome ILIKE $2 OR 
+                s.nome ILIKE $2
             )` : ''}
         `;
         const countResult = await pool.query(countQuery, busca ? [status, `%${busca}%`] : [status]);
@@ -235,16 +255,36 @@ const criarTurma = async (req, res) => {
         
         // Inserir turma
         const result = await pool.query(
-            `INSERT INTO turmas (nome, disciplina_id, professor_id, sala_id, dia_semana, horario_inicio, horario_termino, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-             RETURNING *`,
+            `WITH nova_turma AS (
+                INSERT INTO turmas (nome, disciplina_id, professor_id, sala_id, dia_semana, horario_inicio, horario_termino, status)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                RETURNING *
+             )
+             SELECT t.*, 
+                    d.nome as disciplina_nome,
+                    p.nome as professor_nome,
+                    s.nome as sala_nome,
+                    s.capacidade as sala_capacidade,
+                    COALESCE((
+                        SELECT COUNT(*) 
+                        FROM turma_alunos ta 
+                        WHERE ta.turma_id = t.id
+                    ), 0) as alunos_count
+             FROM nova_turma t
+             LEFT JOIN disciplinas d ON t.disciplina_id = d.id
+             LEFT JOIN professores p ON t.professor_id = p.id
+             LEFT JOIN salas s ON t.sala_id = s.id`,
             [nome.trim(), disciplina_id, professor_id, sala_id, dia_semana, horario_inicio, horario_termino, status]
         );
         
         res.status(201).json(result.rows[0]);
     } catch (error) {
         console.error('Erro ao criar turma:', error);
-        res.status(500).json({ error: 'Erro interno do servidor' });
+        res.status(500).json({ 
+            erro: 'Erro ao criar turma',
+            detalhes: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 };
 
@@ -294,18 +334,34 @@ const atualizarTurma = async (req, res) => {
         }
 
         const query = `
-            UPDATE turmas 
-            SET nome = $1, 
-                disciplina_id = $2, 
-                professor_id = $3, 
-                sala_id = $4, 
-                dia_semana = $5, 
-                horario_inicio = $6, 
-                horario_termino = $7, 
-                status = $8,
-                updated_at = CURRENT_TIMESTAMP 
-            WHERE id = $9 
-            RETURNING *
+            WITH turma_atualizada AS (
+                UPDATE turmas 
+                SET nome = $1, 
+                    disciplina_id = $2, 
+                    professor_id = $3, 
+                    sala_id = $4, 
+                    dia_semana = $5, 
+                    horario_inicio = $6, 
+                    horario_termino = $7, 
+                    status = $8,
+                    updated_at = CURRENT_TIMESTAMP 
+                WHERE id = $9 
+                RETURNING *
+            )
+            SELECT t.*, 
+                   d.nome as disciplina_nome,
+                   p.nome as professor_nome,
+                   s.nome as sala_nome,
+                   s.capacidade as sala_capacidade,
+                   COALESCE((
+                       SELECT COUNT(*) 
+                       FROM turma_alunos ta 
+                       WHERE ta.turma_id = t.id
+                   ), 0) as alunos_count
+            FROM turma_atualizada t
+            LEFT JOIN disciplinas d ON t.disciplina_id = d.id
+            LEFT JOIN professores p ON t.professor_id = p.id
+            LEFT JOIN salas s ON t.sala_id = s.id
         `;
         
         const params = [
